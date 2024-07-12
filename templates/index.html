@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatCompletions shi</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 250px;
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #sidebar h2 {
+            margin: 0;
+            margin-bottom: 20px;
+        }
+
+        #chat-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .chat {
+            padding: 10px;
+            background-color: #34495e;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat:hover {
+            background-color: #1abc9c;
+        }
+
+        .chat input {
+            background: none;
+            border: none;
+            color: #ecf0f1;
+            width: 100px;
+            cursor: pointer;
+        }
+
+        .chat input:focus {
+            outline: none;
+        }
+
+        .rename-button {
+            margin-left: 10px;
+            cursor: pointer;
+        }
+
+        #chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #fff;
+            border-radius: 8px;
+            margin: 20px;
+            overflow: hidden;
+        }
+
+        #chat-box {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 8px;
+            word-wrap: break-word;
+            background-color: #f0f0f0;
+            position: relative;
+        }
+
+        .message.right {
+            align-self: flex-end;
+            background-color: #0084ff;
+            color: #fff;
+        }
+
+        .message.left {
+            align-self: flex-start;
+        }
+
+        .message.copyable {
+            cursor: pointer;
+        }
+
+        .message code {
+            display: block;
+            background: #f1f1f1;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+
+        .message .timestamp {
+            font-size: 0.8em;
+            color: #888;
+            position: absolute;
+            bottom: -15px;
+            right: 5px;
+        }
+
+        .message.loading::after {
+            content: "Loading...";
+            position: absolute;
+            bottom: -15px;
+            right: 5px;
+            color: #888;
+            font-size: 0.8em;
+        }
+
+        #chat-form {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            border-top: 1px solid #ccc;
+        }
+
+        #user-message {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #0084ff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Chats</h2>
+        <div id="chat-list">
+            <div class="chat" onclick="newChat()">+ New Chat</div>
+        </div>
+    </div>
+    <div id="chat-container">
+        <div id="chat-box">
+        </div>
+        <form id="chat-form">
+            <input type="text" id="user-message" placeholder="Type your message..." required>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+
+    <script>
+        let currentChatId = null;
+        let chats = JSON.parse(localStorage.getItem('chats')) || [];
+        document.getElementById('chat-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            let userMessage = document.getElementById('user-message').value;
+            document.getElementById('user-message').value = '';
+
+            let response = await fetch('/ask', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `user_message=${encodeURIComponent(userMessage)}`
+            });
+
+            let data = await response.json();
+            if (response.ok) {
+                addMessageToChat(userMessage, 'user');
+                addMessageToChat(data.ai_message, 'ai');
+            } else {
+                console.error(data.error);
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadChats();
+            if (chats.length > 0) {
+                switchChat(0);
+            }
+        });
+
+        async function addMessageToChat(message, sender) {
+            if (currentChatId !== null) {
+                let timestamp = new Date().toLocaleString();
+                let messageData = { sender, message, timestamp };
+                chats[currentChatId].messages.push(messageData);
+                localStorage.setItem('chats', JSON.stringify(chats));
+                displayMessage(messageData);
+            }
+        }
+
+       function displayMessage(messageData) {
+    let chatBox = document.getElementById('chat-box');
+    let messageElement = document.createElement('div');
+    messageElement.classList.add('message', messageData.sender === 'ai' ? 'left' : 'right');
+
+    if (messageData.sender === 'ai' && messageData.message.includes('```')) {
+        let parts = messageData.message.split(/```/);
+        messageElement.innerHTML = parts.map((part, i) =>
+            i % 2 === 0 ? `<p>${part}</p>` : `<code>${part}</code>`
+        ).join('');
+    } else {
+        messageElement.innerText = messageData.message;
+    }
+
+    if (messageData.sender === 'ai') {
+        messageElement.addEventListener('click', function() {
+            copyMessage(messageData.message);
+        });
+        messageElement.classList.add('copyable');
+    }
+
+    let timestampElement = document.createElement('span');
+    timestampElement.classList.add('timestamp');
+    timestampElement.innerText = messageData.timestamp;
+    messageElement.appendChild(timestampElement);
+
+    chatBox.appendChild(messageElement);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+
+        function copyMessage(message) {
+            navigator.clipboard.writeText(message)
+                .then(() => alert('Message copied to clipboard'))
+                .catch(err => console.error('Failed to copy:', err));
+        }
+
+        function newChat() {
+            let chatName = `Chat ${chats.length + 1}`;
+            let chat = { name: chatName, messages: [] };
+            chats.push(chat);
+            localStorage.setItem('chats', JSON.stringify(chats));
+            loadChats();
+            switchChat(chats.length - 1);
+        }
+
+        function loadChats() {
+            let chatList = document.getElementById('chat-list');
+            chatList.innerHTML = '<div class="chat" onclick="newChat()">+ New Chat</div>';
+            chats.forEach((chat, index) => {
+                let chatElement = document.createElement('div');
+                chatElement.classList.add('chat');
+                chatElement.innerHTML = `
+                    <input type="text" value="${chat.name}" onfocus="this.select()" onchange="renameChat(${index}, this.value)">
+                    <span class="rename-button" onclick="renameChat(${index}, this.previousElementSibling.value)">✎</span>
+                    <span class="delete-button" onclick="deleteChat(${index})">❌</span>
+                `;
+                chatElement.addEventListener('click', () => switchChat(index));
+                chatList.appendChild(chatElement);
+            });
+        }
+
+        function renameChat(chatId, newName) {
+            chats[chatId].name = newName;
+            localStorage.setItem('chats', JSON.stringify(chats));
+            loadChats();
+        }
+
+        function deleteChat(chatId) {
+            chats.splice(chatId, 1);
+            localStorage.setItem('chats', JSON.stringify(chats));
+            loadChats();
+            switchChat(chats.length > 0 ? 0 : null);
+        }
+
+        function switchChat(chatId) {
+            currentChatId = chatId;
+            let chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML = '';
+            if (chatId !== null) {
+                chats[chatId].messages.forEach(messageData => {
+                    displayMessage(messageData);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
